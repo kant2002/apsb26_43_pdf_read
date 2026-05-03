@@ -109,6 +109,7 @@ impl<'a> VisitMut<'a> for JsFuckDeobfuscatorTransformer<'a> {
                                     NumberBase::Decimal);
                             *it = new_expr;
                         },
+                    // a + [] = "a"
                     (BinaryOperator::Addition, Expression::NumericLiteral(nl), Expression::ArrayExpression(arrr)) 
                         if arrr.elements.len() == 0 => {
                             let value = nl.value;
@@ -120,6 +121,16 @@ impl<'a> VisitMut<'a> for JsFuckDeobfuscatorTransformer<'a> {
                                         [raw_value.as_str()], self.builder.allocator),
                                     Some(Str::from_strs_array_in(
                                         ["'", raw_value.as_str(), "'"], self.builder.allocator)),);
+                            *it = new_expr;
+                        },
+                    // "a" + [] = "a"
+                    (BinaryOperator::Addition, Expression::StringLiteral(sl), Expression::ArrayExpression(arrr)) 
+                        if arrr.elements.len() == 0 => {
+                            let new_expr = 
+                                self.builder.expression_string_literal(
+                                    SPAN,
+                                    sl.value,
+                                    sl.raw);
                             *it = new_expr;
                         },
                     // "a"+"b" => "ab"
