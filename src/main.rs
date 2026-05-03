@@ -69,6 +69,36 @@ impl<'a> VisitMut<'a> for JsFuckDeobfuscatorTransformer<'a> {
                         },
                     _ => {},
                 },
+            Expression::BinaryExpression(expr) =>
+                match (expr.operator, &expr.left, &expr.right) {
+                    // {}+[] => "[object Object]"
+                    (BinaryOperator::Addition, Expression::ObjectExpression(objl), Expression::ArrayExpression(arrr)) if objl.properties.len() == 0 && arrr.elements.len() == 0 =>
+                        {
+                            *it = 
+                                self.builder.expression_string_literal(
+                                    SPAN, 
+                                    "[object Object]",
+                                    Some(Str::new_const("'[object Object]'")));
+                        },
+                    // [a]+[b] => "ab"
+                    (BinaryOperator::Addition, Expression::ArrayExpression(arrl), Expression::ArrayExpression(arrr)) 
+                        if arrl.elements.len() == 1 && arrr.elements.len() == 1 => {
+                            match(&arrl.elements[0], &arrr.elements[0]) {
+                                (ArrayExpressionElement::NumericLiteral(l), ArrayExpressionElement::NumericLiteral(r)) => {
+                                    let value = Str::from_strs_array_in([l.raw.unwrap().as_str(), r.raw.unwrap().as_str()], self.builder.allocator);
+                                    let raw_value =
+                                        Str::from_strs_array_in(["'", l.raw.unwrap().as_str(), r.raw.unwrap().as_str(), "'"], self.builder.allocator);
+                                    *it = 
+                                        self.builder.expression_string_literal(
+                                            SPAN, 
+                                            value,
+                                            Some(raw_value));
+                                },
+                                _ => {},
+                            }
+                        },
+                    _ => {},
+                },
             _ => {},
         }
         
