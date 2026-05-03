@@ -19,22 +19,57 @@ struct JsFuckDeobfuscatorTransformer<'a> {
 
 impl<'a> VisitMut<'a> for JsFuckDeobfuscatorTransformer<'a> {
     fn visit_expression(&mut self, it: &mut Expression<'a>) {
+        walk_mut::walk_expression(self, it);
         match it {
             Expression::UnaryExpression(expr) =>
                 match (expr.operator, &expr.argument) {
+                    // +{} => "NaN"
                     (UnaryOperator::UnaryPlus, Expression::ObjectExpression(obje)) if obje.properties.len() == 0 =>
                         {
                             let new_expr = self.builder.expression_string_literal(SPAN, "NaN", Some(Str::new_const("'NaN'")));
-                            *it = new_expr; // Expression::StringLiteral("NaN"),
+                            *it = new_expr;
                         },
+                    // +[] => 0
                     (UnaryOperator::UnaryPlus, Expression::ArrayExpression(obje)) if obje.elements.len() == 0 =>
                         {
                             let new_expr = self.builder.expression_numeric_literal(SPAN, 0.0, Some(Str::new_const("0")), NumberBase::Decimal);
-                            *it = new_expr; // Expression::StringLiteral("NaN"),
+                            *it = new_expr;
                         },
-                    _ => walk_mut::walk_expression(self, it),
+                    // +x => x
+                    (UnaryOperator::UnaryPlus, Expression::NumericLiteral(lit)) =>
+                        {
+                            *it = 
+                                self.builder.expression_numeric_literal(
+                                    SPAN,
+                                    lit.value,
+                                    lit.raw,
+                                    lit.base);
+                        },
+                    // !0 => 1
+                    (UnaryOperator::LogicalNot, Expression::NumericLiteral(lit)) if lit.value == 0.0 =>
+                        {
+                            let new_expr = 
+                                self.builder.expression_numeric_literal(
+                                    SPAN,
+                                    1.0,
+                                    Some(Str::new_const("1")),
+                                    NumberBase::Decimal);
+                            *it = new_expr;
+                        },
+                    // !1 => 0
+                    (UnaryOperator::LogicalNot, Expression::NumericLiteral(lit)) if lit.value == 1.0 =>
+                        {
+                            let new_expr = 
+                                self.builder.expression_numeric_literal(
+                                    SPAN,
+                                    0.0,
+                                    Some(Str::new_const("0")),
+                                    NumberBase::Decimal);
+                            *it = new_expr;
+                        },
+                    _ => {},
                 },
-            _ => walk_mut::walk_expression(self, it),
+            _ => {},
         }
         
     }
@@ -113,6 +148,8 @@ fn reformat_js(file_name: &'static str, output_filename: &'static str, source_te
         builder: &AstBuilder::new(&allocator),
     };
     deobfuscator.visit_program(&mut program);
+    //deobfuscator.visit_program(&mut program);
+    // deobfuscator.visit_program(&mut program);
     let js = Codegen::new().build(&program);
     fs::write(output_filename, js.code).unwrap();
 }
