@@ -67,6 +67,25 @@ impl<'a> VisitMut<'a> for JsFuckDeobfuscatorTransformer<'a> {
                                     NumberBase::Decimal);
                             *it = new_expr;
                         },
+                    // ![] => false
+                    (UnaryOperator::LogicalNot, Expression::ArrayExpression(arr)) if arr.elements.len() == 0 =>
+                        {
+                            let new_expr = 
+                                self.builder.expression_boolean_literal(
+                                    SPAN,
+                                    false);
+                            *it = new_expr;
+                        },
+                    // !false => true
+                    // !true => false
+                    (UnaryOperator::LogicalNot, Expression::BooleanLiteral(bl)) =>
+                        {
+                            let new_expr = 
+                                self.builder.expression_boolean_literal(
+                                    SPAN,
+                                    !bl.value);
+                            *it = new_expr;
+                        },
                     _ => {},
                 },
             Expression::BinaryExpression(expr) =>
@@ -133,6 +152,30 @@ impl<'a> VisitMut<'a> for JsFuckDeobfuscatorTransformer<'a> {
                                     sl.raw);
                             *it = new_expr;
                         },
+                    // true + [] = "true"
+                    // false + [] = "false"
+                    (BinaryOperator::Addition, Expression::BooleanLiteral(bl), Expression::ArrayExpression(arrr)) 
+                        if arrr.elements.len() == 0 => {
+                            if bl.value {
+                                *it = self.builder.expression_string_literal(
+                                    SPAN,
+                                    "true",
+                                    Some(Str::new_const("'true'")));
+                            } else {
+                                *it = self.builder.expression_string_literal(
+                                    SPAN,
+                                    "false",
+                                    Some(Str::new_const("'false'")));
+                            }
+                        },
+                    // undefined + [] = "undefined"
+                    (BinaryOperator::Addition, Expression::Identifier(ident), Expression::ArrayExpression(arrr)) 
+                        if ident.name.len() == 9 && ident.name.as_str().find("undefined") == Some(0) => {
+                            *it = self.builder.expression_string_literal(
+                                SPAN,
+                                "undefined",
+                                Some(Str::new_const("'undefined'")));
+                        },
                     // "a"+"b" => "ab"
                     (BinaryOperator::Addition, Expression::StringLiteral(sl), Expression::StringLiteral(sr)) => {
                             let value = Str::from_strs_array_in([sl.value.as_str(), sr.value.as_str()], self.builder.allocator);
@@ -152,6 +195,50 @@ impl<'a> VisitMut<'a> for JsFuckDeobfuscatorTransformer<'a> {
                                     "Infinity",
                                     Some(Str::new_const("'Infinity'")));
                             *it = new_expr;
+                        },
+                    _ => {},
+                },
+            Expression::ComputedMemberExpression(expr) =>
+                match (&expr.object, &expr.expression) {
+                    // "abc"[1] => "b"
+                    (Expression::StringLiteral(sl), Expression::NumericLiteral(nl)) =>
+                        {
+                            let index = nl.value as usize;
+                            let (_, l) = sl.value.split_at(index);
+                            let (value_, _) = l.split_at(1);
+                            let value = Str::from_strs_array_in([value_], self.builder.allocator);
+                            let raw_value =
+                                Str::from_strs_array_in(["'", value_, "'"], self.builder.allocator);
+                            *it = 
+                                self.builder.expression_string_literal(
+                                    SPAN, 
+                                    value.as_str(),
+                                    Some(raw_value));
+                        },
+                    // "abc"["1"] => "b"
+                    (Expression::StringLiteral(sl), Expression::StringLiteral(nl)) =>
+                        {
+                            match nl.value.parse::<usize>() {
+                                Ok(index) => {
+                                    let (_, l) = sl.value.split_at(index);
+                                    let (value_, _) = l.split_at(1);
+                                    let value = Str::from_strs_array_in([value_], self.builder.allocator);
+                                    let raw_value =
+                                        Str::from_strs_array_in(["'", value_, "'"], self.builder.allocator);
+                                    *it = 
+                                        self.builder.expression_string_literal(
+                                            SPAN, 
+                                            value.as_str(),
+                                            Some(raw_value));
+                                },
+                                _ => {}
+                            }
+                        },
+                    // [][[]] => undefined
+                    (Expression::ArrayExpression(arr), Expression::ArrayExpression(arri)) 
+                        if arr.elements.len() == 0 =>
+                        {
+                            *it = self.builder.expression_identifier(SPAN, "undefined");
                         },
                     _ => {},
                 },
