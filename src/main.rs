@@ -169,6 +169,8 @@ impl<'a> VisitMut<'a> for JsFuckDeobfuscatorTransformer<'a> {
                             }
                         },
                     // undefined + [] = "undefined"
+                    // TODO: Instead of assuming that undefined is not overiden, in transformation use globalThis.undefined
+                    // but even that can be poisoned, if environment is not modern.
                     (BinaryOperator::Addition, Expression::Identifier(ident), Expression::ArrayExpression(arrr)) 
                         if ident.name.len() == 9 && ident.name.as_str().find("undefined") == Some(0) => {
                             *it = self.builder.expression_string_literal(
@@ -235,6 +237,8 @@ impl<'a> VisitMut<'a> for JsFuckDeobfuscatorTransformer<'a> {
                             }
                         },
                     // [][[]] => undefined
+                    // TODO: Instead of assuming that undefined is not overiden, in transformation use globalThis.undefined
+                    // but even that can be poisoned, if environment is not modern.
                     (Expression::ArrayExpression(arr), Expression::ArrayExpression(arri)) 
                         if arr.elements.len() == 0 =>
                         {
