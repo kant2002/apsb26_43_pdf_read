@@ -109,6 +109,30 @@ impl<'a> VisitMut<'a> for JsFuckDeobfuscatorTransformer<'a> {
                                     NumberBase::Decimal);
                             *it = new_expr;
                         },
+                    (BinaryOperator::Addition, Expression::NumericLiteral(nl), Expression::ArrayExpression(arrr)) 
+                        if arrr.elements.len() == 0 => {
+                            let value = nl.value;
+                            let raw_value = format!("{}", value);
+                            let new_expr = 
+                                self.builder.expression_string_literal(
+                                    SPAN,
+                                    Str::from_strs_array_in(
+                                        [raw_value.as_str()], self.builder.allocator),
+                                    Some(Str::from_strs_array_in(
+                                        ["'", raw_value.as_str(), "'"], self.builder.allocator)),);
+                            *it = new_expr;
+                        },
+                    // "a"+"b" => "ab"
+                    (BinaryOperator::Addition, Expression::StringLiteral(sl), Expression::StringLiteral(sr)) => {
+                            let value = Str::from_strs_array_in([sl.value.as_str(), sr.value.as_str()], self.builder.allocator);
+                            let raw_value =
+                                Str::from_strs_array_in(["'", sl.value.as_str(), sr.value.as_str(), "'"], self.builder.allocator);
+                            *it = 
+                                self.builder.expression_string_literal(
+                                    SPAN, 
+                                    value,
+                                    Some(raw_value));
+                        },
                     (BinaryOperator::Division, Expression::NumericLiteral(nl), Expression::NumericLiteral(nr)) 
                         if nr.value == 0.0 && nl.value > 0.0 => {
                             let new_expr = 
