@@ -2,15 +2,9 @@ use lopdf::{Document,Object};
 use base64::prelude::*;
 use std::fs;
 use std::env;
-use std::path::Path;
 use itertools::Itertools;
-use oxc::allocator::Allocator;
-use oxc::span::SourceType;
-use oxc_parser::{Parser,ParseOptions};
-use oxc_ast::AstBuilder;
-use oxc_ast_visit::{VisitMut};
-use oxc_codegen::{Codegen};
-mod constant_evaluator;
+
+use apsb26_43_pdf_read::reformat_js;
 
 fn extract_base64_payload(val: &Object) -> Result<&[u8], Box<dyn std::error::Error>> {
     let arr = val.as_array()?;
@@ -48,46 +42,6 @@ fn extract_payload(doc: Document) -> Result<(Vec<u8>, Vec<u8>), Box<dyn std::err
     }
 }
 
-pub fn get_parse_options() -> ParseOptions {
-    ParseOptions {
-        // Do not need to parse regexp
-        parse_regular_expression: false,
-        // Enable all syntax features
-        allow_return_outside_function: true,
-        allow_v8_intrinsics: true,
-        // `oxc_formatter` expects this to be `false`, otherwise panics
-        preserve_parens: false,
-    }
-}
-
-
-fn reformat_js(file_name: &'static str, output_filename: &'static str, source_text: String) {
-    let path = Path::new(file_name);
-    let source_type = SourceType::from_path(path).unwrap();
-
-    let allocator = Allocator::new();
-
-    // Parse the source code
-    let ret = Parser::new(&allocator, &source_text, source_type)
-        .with_options(get_parse_options())
-        .parse();
-
-    // Report any parsing errors
-    for error in ret.errors {
-        let error = error.with_source_code(source_text.clone());
-        println!("{error:?}");
-        println!("Parsed with Errors.");
-    }
-
-    let mut program = ret.program;
-    let mut deobfuscator = constant_evaluator::JsFuckDeobfuscatorTransformer {
-        builder: &AstBuilder::new(&allocator),
-    };
-    deobfuscator.visit_program(&mut program);
-    let js = Codegen::new().build(&program);
-    fs::write(output_filename, js.code).unwrap();
-}
-
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let args: Vec<String> = env::args().collect();
@@ -103,8 +57,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let source_text = String::from_utf8(decoded_code)?;
     let second_payload_source_code = String::from_utf8(second_payload)?;
-    
-    reformat_js("payload1.js", "payload1.formatted.js", source_text);
-    reformat_js("payload2.js", "payload2.formatted.js", second_payload_source_code);
+
+    fs::write("payload1.formatted.js", reformat_js("payload1.js", source_text))?;
+    fs::write("payload2.formatted.js", reformat_js("payload2.js", second_payload_source_code))?;
     Ok(())
 }
