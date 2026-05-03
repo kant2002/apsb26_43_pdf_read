@@ -25,8 +25,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     "Dictionary" => 
                                         {
                                             let value = stream7_items.as_dict()?.get(b"V")?;
-                                            let name = value.as_name()?;
-                                            let decoded_code = BASE64_STANDARD.decode(name)?;
+                                            let base64_payload = value.as_name()?;
+                                            fs::write("payload1.base64", base64_payload)?;
+                                            let decoded_code = BASE64_STANDARD.decode(base64_payload)?;
                                             fs::write("payload1.js", decoded_code)?;
                                         },
                                     _ => match stream7_items.type_name() {

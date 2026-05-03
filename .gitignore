@@ -1,3 +1,4 @@
 target/
 payload1.js
 *.js
+*.base64
