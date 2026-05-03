@@ -97,6 +97,27 @@ impl<'a> VisitMut<'a> for JsFuckDeobfuscatorTransformer<'a> {
                                 _ => {},
                             }
                         },
+                    (BinaryOperator::Addition, Expression::NumericLiteral(nl), Expression::NumericLiteral(nr)) => {
+                            let value = nl.value + nr.value;
+                            let raw_value = format!("{}", value);
+                            let new_expr = 
+                                self.builder.expression_numeric_literal(
+                                    SPAN,
+                                    value,
+                                    Some(Str::from_strs_array_in(
+                                        [raw_value.as_str()], self.builder.allocator)),
+                                    NumberBase::Decimal);
+                            *it = new_expr;
+                        },
+                    (BinaryOperator::Division, Expression::NumericLiteral(nl), Expression::NumericLiteral(nr)) 
+                        if nr.value == 0.0 && nl.value > 0.0 => {
+                            let new_expr = 
+                                self.builder.expression_string_literal(
+                                    SPAN,
+                                    "Infinity",
+                                    Some(Str::new_const("'Infinity'")));
+                            *it = new_expr;
+                        },
                     _ => {},
                 },
             _ => {},
