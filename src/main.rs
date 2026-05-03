@@ -1,7 +1,86 @@
-use lopdf::{Document};
+use lopdf::{Document,Object};
 use base64::prelude::*;
 use std::fs;
 use std::env;
+use std::path::Path;
+use itertools::Itertools;
+use oxc::allocator::Allocator;
+use oxc::span::SourceType;
+use oxc_parser::{Parser, ParseOptions};
+use oxc_formatter::{
+    BracketSameLine, FormatOptions, Formatter, JsdocOptions, LineWidth, Semicolons,
+    get_parse_options,
+};
+
+fn extract_base64_payload(val: &Object) -> Result<&[u8], Box<dyn std::error::Error>> {
+    let arr = val.as_array()?;
+    let stream7_items = &arr[0];
+    let value = stream7_items.as_dict()?.get(b"V")?;
+    let base64_payload = value.as_name()?;
+    fs::write("payload1.base64", base64_payload)?;
+    Ok(base64_payload)
+    // let decoded_code = BASE64_STANDARD.decode(base64_payload)?;
+    // //fs::write("payload1.js", decoded_code)?;
+    // Ok(decoded_code)
+}
+
+fn extract_second_payload(val: &Object) -> Result<&[u8], Box<dyn std::error::Error>> {
+    let second_payload_dict =val.as_dict()?;
+    let names = second_payload_dict.iter().nth(0).unwrap().1;
+    let dict_with_code = names.as_array()?.iter().nth_back(0).unwrap().as_dict()?;
+    Ok(dict_with_code.get(b"JS")?.as_str()?)
+}
+
+fn extract_payload(doc: Document) -> Result<(Vec<u8>, Vec<u8>), Box<dyn std::error::Error>> {
+    //let doc = Document::load(file_name)?;
+    let binding = doc.objects.clone();
+    let stream_data = 
+        binding.iter()
+        .filter(|kv| kv.0.0 == 7 || kv.0.0 == 9)
+        .collect_tuple();
+
+    match stream_data {
+        Some((p1, p2)) => {
+            let pp1 = Vec::from(extract_base64_payload(p1.1)?);
+            let pp2 = Vec::from(extract_second_payload(p2.1)?);
+            Ok((pp1, pp2))
+        }
+        None => {
+            Err(Into::into("The streams 7 or 9 missing"))
+        }
+    }
+}
+
+fn reformat_js(file_name: &'static str, output_filename: &'static str, source_text: String) {
+    let path = Path::new(file_name);
+    let source_type = SourceType::from_path(path).unwrap();
+
+    let allocator = Allocator::new();
+
+        // Parse the source code
+    let ret = Parser::new(&allocator, &source_text, source_type)
+        .with_options(get_parse_options())
+        .parse();
+
+    // Report any parsing errors
+    for error in ret.errors {
+        let error = error.with_source_code(source_text.clone());
+        println!("{error:?}");
+        println!("Parsed with Errors.");
+    }
+
+    let options = FormatOptions {
+        //bracket_same_line: BracketSameLine::from(true),
+        //semicolons,
+        //line_width,
+        //jsdoc: jsdoc_options,
+        ..Default::default()
+    };
+    let formatted = Formatter::new(&allocator, options).format(&ret.program);
+
+    let formatted_code = formatted.print().unwrap().into_code();
+    fs::write(output_filename, &formatted_code).unwrap();
+}
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 
@@ -10,57 +89,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Extracting payload from {}", file_name);
     // Load existing PDF
     let doc = Document::load(file_name)?;
+    let (base64_payload, second_payload) = extract_payload(doc)?;
+    fs::write("payload1.base64", &base64_payload)?;
+    let decoded_code = BASE64_STANDARD.decode(&base64_payload)?;
+    fs::write("payload1.js", &decoded_code)?;
+    fs::write("payload2.js", second_payload)?;
 
-    for (key, val) in doc.objects.iter() {
-        if key.0 == 7 {
-            println!("stream key: {} - {}", key.0, key.1);
-            println!("enum_variant: {}", val.enum_variant());
-            match val.enum_variant() {
-                "Array" => 
-                    match val.as_array() {
-                        Ok(arr) => 
-                            {
-                                let stream7_items = &arr[0];
-                                match stream7_items.enum_variant() {
-                                    "Dictionary" => 
-                                        {
-                                            let value = stream7_items.as_dict()?.get(b"V")?;
-                                            let base64_payload = value.as_name()?;
-                                            fs::write("payload1.base64", base64_payload)?;
-                                            let decoded_code = BASE64_STANDARD.decode(base64_payload)?;
-                                            fs::write("payload1.js", decoded_code)?;
-                                        },
-                                    _ => match stream7_items.type_name() {
-                                        Ok(r) => println!("type_name: {:?} {}", str::from_utf8(r), stream7_items.enum_variant()),
-                                        Err(err) => println!("type_name err: {}", err)
-                                    }
-                                }
-                            },
-                        Err(err) => println!("stream 7 is not an array: {}", err)
-                    }
-                _ => match val.type_name() {
-                    Ok(r) => println!("Stream 7 expected Array type by have type: {:?}", str::from_utf8(r)),
-                    Err(err) => println!("Unknown error in stream 7: {}", err)
-                }
-            }
-        }
-        if key.0 == 9 {
-            println!("stream key: {} - {}", key.0, key.1);
-            println!("enum_variant: {}", val.enum_variant());
-            match val.enum_variant() {
-                "Dictionary" => {
-                    let second_payload_dict =val.as_dict()?;
-                    let names = second_payload_dict.iter().nth(0).unwrap().1;
-                    let dict_with_code = names.as_array()?.iter().nth_back(0).unwrap().as_dict()?;
-                    fs::write("payload2.js", dict_with_code.get(b"JS")?.as_str()?)?;
-                }
-                _ => match val.type_name() {
-                    Ok(r) => println!("type_name: {:?}", str::from_utf8(r)),
-                    Err(err) => println!("type_name: {}", err)
-                }
-            }
-        }
-        
-    }
+    let source_text = String::from_utf8(decoded_code)?;
+    
+    // The oxc_formatter is junky and greedy on stack.
+    // So I run it on thread with bigger stack size configured.
+    use std::thread;
+    let builder = thread::Builder::new()
+        .name("worker".into())
+        .stack_size(32 * 1024 * 1024); // 32 MiB 
+    let handler = builder.spawn(move || { 
+        reformat_js("payload1.js", "payload1.formatted.js", source_text);
+    }).unwrap();
+    handler.join().unwrap();
     Ok(())
 }
