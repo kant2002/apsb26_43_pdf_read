@@ -93,9 +93,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     fs::write("payload1.base64", &base64_payload)?;
     let decoded_code = BASE64_STANDARD.decode(&base64_payload)?;
     fs::write("payload1.js", &decoded_code)?;
-    fs::write("payload2.js", second_payload)?;
+    fs::write("payload2.js", &second_payload)?;
 
     let source_text = String::from_utf8(decoded_code)?;
+    let second_payload_source_code = String::from_utf8(second_payload)?;
     
     // The oxc_formatter is junky and greedy on stack.
     // So I run it on thread with bigger stack size configured.
@@ -105,6 +106,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .stack_size(32 * 1024 * 1024); // 32 MiB 
     let handler = builder.spawn(move || { 
         reformat_js("payload1.js", "payload1.formatted.js", source_text);
+        reformat_js("payload2.js", "payload2.formatted.js", second_payload_source_code);
     }).unwrap();
     handler.join().unwrap();
     Ok(())
