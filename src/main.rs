@@ -6,9 +6,9 @@ use std::path::Path;
 use itertools::Itertools;
 use oxc::allocator::Allocator;
 use oxc::span::SourceType;
-use oxc_parser::{Parser, ParseOptions};
+use oxc_parser::{Parser};
 use oxc_formatter::{
-    BracketSameLine, FormatOptions, Formatter, JsdocOptions, LineWidth, Semicolons,
+    FormatOptions, Formatter,
     get_parse_options,
 };
 
@@ -19,9 +19,6 @@ fn extract_base64_payload(val: &Object) -> Result<&[u8], Box<dyn std::error::Err
     let base64_payload = value.as_name()?;
     fs::write("payload1.base64", base64_payload)?;
     Ok(base64_payload)
-    // let decoded_code = BASE64_STANDARD.decode(base64_payload)?;
-    // //fs::write("payload1.js", decoded_code)?;
-    // Ok(decoded_code)
 }
 
 fn extract_second_payload(val: &Object) -> Result<&[u8], Box<dyn std::error::Error>> {
@@ -57,7 +54,7 @@ fn reformat_js(file_name: &'static str, output_filename: &'static str, source_te
 
     let allocator = Allocator::new();
 
-        // Parse the source code
+    // Parse the source code
     let ret = Parser::new(&allocator, &source_text, source_type)
         .with_options(get_parse_options())
         .parse();
@@ -70,10 +67,6 @@ fn reformat_js(file_name: &'static str, output_filename: &'static str, source_te
     }
 
     let options = FormatOptions {
-        //bracket_same_line: BracketSameLine::from(true),
-        //semicolons,
-        //line_width,
-        //jsdoc: jsdoc_options,
         ..Default::default()
     };
     let formatted = Formatter::new(&allocator, options).format(&ret.program);
