@@ -1,16 +1,45 @@
 use lopdf::{Document,Object};
 use base64::prelude::*;
+use oxc_span::SPAN;
 use std::fs;
 use std::env;
 use std::path::Path;
 use itertools::Itertools;
 use oxc::allocator::Allocator;
 use oxc::span::SourceType;
-use oxc_parser::{Parser};
-use oxc_formatter::{
-    FormatOptions, Formatter,
-    get_parse_options,
-};
+use oxc_parser::{Parser,ParseOptions};
+use oxc::ast::ast::*;
+use oxc_ast::AstBuilder;
+use oxc_ast_visit::{VisitMut, walk_mut};
+use oxc_codegen::{Codegen};
+
+struct JsFuckDeobfuscatorTransformer<'a> {
+    pub builder: &'a AstBuilder<'a>,
+}
+
+impl<'a> VisitMut<'a> for JsFuckDeobfuscatorTransformer<'a> {
+    fn visit_expression(&mut self, it: &mut Expression<'a>) {
+        match it {
+            Expression::UnaryExpression(expr) =>
+                match (expr.operator, &expr.argument) {
+                    (UnaryOperator::UnaryPlus, Expression::ObjectExpression(obje)) if obje.properties.len() == 0 =>
+                        {
+                            let new_expr = self.builder.expression_string_literal(SPAN, "NaN", Some(Str::new_const("'NaN'")));
+                            *it = new_expr; // Expression::StringLiteral("NaN"),
+                        },
+                    (UnaryOperator::UnaryPlus, Expression::ArrayExpression(obje)) if obje.elements.len() == 0 =>
+                        {
+                            let new_expr = self.builder.expression_numeric_literal(SPAN, 0.0, Some(Str::new_const("0")), NumberBase::Decimal);
+                            *it = new_expr; // Expression::StringLiteral("NaN"),
+                        },
+                    _ => walk_mut::walk_expression(self, it),
+                },
+            _ => walk_mut::walk_expression(self, it),
+        }
+        
+    }
+}
+
 
 fn extract_base64_payload(val: &Object) -> Result<&[u8], Box<dyn std::error::Error>> {
     let arr = val.as_array()?;
@@ -48,6 +77,19 @@ fn extract_payload(doc: Document) -> Result<(Vec<u8>, Vec<u8>), Box<dyn std::err
     }
 }
 
+pub fn get_parse_options() -> ParseOptions {
+    ParseOptions {
+        // Do not need to parse regexp
+        parse_regular_expression: false,
+        // Enable all syntax features
+        allow_return_outside_function: true,
+        allow_v8_intrinsics: true,
+        // `oxc_formatter` expects this to be `false`, otherwise panics
+        preserve_parens: false,
+    }
+}
+
+
 fn reformat_js(file_name: &'static str, output_filename: &'static str, source_text: String) {
     let path = Path::new(file_name);
     let source_type = SourceType::from_path(path).unwrap();
@@ -66,13 +108,13 @@ fn reformat_js(file_name: &'static str, output_filename: &'static str, source_te
         println!("Parsed with Errors.");
     }
 
-    let options = FormatOptions {
-        ..Default::default()
+    let mut program = ret.program;
+    let mut deobfuscator = JsFuckDeobfuscatorTransformer {
+        builder: &AstBuilder::new(&allocator),
     };
-    let formatted = Formatter::new(&allocator, options).format(&ret.program);
-
-    let formatted_code = formatted.print().unwrap().into_code();
-    fs::write(output_filename, &formatted_code).unwrap();
+    deobfuscator.visit_program(&mut program);
+    let js = Codegen::new().build(&program);
+    fs::write(output_filename, js.code).unwrap();
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -91,16 +133,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let source_text = String::from_utf8(decoded_code)?;
     let second_payload_source_code = String::from_utf8(second_payload)?;
     
-    // The oxc_formatter is junky and greedy on stack.
-    // So I run it on thread with bigger stack size configured.
-    use std::thread;
-    let builder = thread::Builder::new()
-        .name("worker".into())
-        .stack_size(32 * 1024 * 1024); // 32 MiB 
-    let handler = builder.spawn(move || { 
-        reformat_js("payload1.js", "payload1.formatted.js", source_text);
-        reformat_js("payload2.js", "payload2.formatted.js", second_payload_source_code);
-    }).unwrap();
-    handler.join().unwrap();
+    reformat_js("payload1.js", "payload1.formatted.js", source_text);
+    reformat_js("payload2.js", "payload2.formatted.js", second_payload_source_code);
     Ok(())
 }

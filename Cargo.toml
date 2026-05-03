@@ -7,10 +7,9 @@ edition = "2024"
 lopdf = "0.40.0"
 base64 = "0.22.1"
 itertools = "0.14.0"
-#oxc = "0.128.0"
-#oxc_parser = "0.128.0"
-#oxc_span = "0.128.0"
 oxc = { git = "https://github.com/oxc-project/oxc", tag = "oxfmt_v0.47.0" }
+oxc_ast = { git = "https://github.com/oxc-project/oxc", tag = "oxfmt_v0.47.0" }
+oxc_ast_visit = { git = "https://github.com/oxc-project/oxc", tag = "oxfmt_v0.47.0" }
 oxc_parser = { git = "https://github.com/oxc-project/oxc", tag = "oxfmt_v0.47.0" }
 oxc_span = { git = "https://github.com/oxc-project/oxc", tag = "oxfmt_v0.47.0" }
-oxc_formatter = { git = "https://github.com/oxc-project/oxc", tag = "oxfmt_v0.47.0" }
+oxc_codegen = { git = "https://github.com/oxc-project/oxc", tag = "oxfmt_v0.47.0" }
