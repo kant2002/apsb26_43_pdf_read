@@ -39,3 +39,16 @@ fn producing_true() {
         "!![]".to_string());
     assert_eq!(result.trim_end(), "true;");
 }
+
+#[test]
+fn simplify_trivial_reassignment() {
+    let result = reformat_js(
+        "test.js",
+        "var new_ident = old_ident;
+        new_ident();
+        function old_ident(){}".to_string());
+    assert_eq!(result.trim_end(), 
+        "var new_ident = old_ident;
+old_ident();
+function old_ident() {}");
+}
